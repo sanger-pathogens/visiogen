@@ -16,7 +16,6 @@ struct SegmentConnectivity {
 }
 
 pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredKmers> {
-    use std::collections::{HashMap, HashSet};
 
     let file = File::open(&graph_args.gfa_path).expect("Failed to open input GFA");
     let reader = BufReader::new(file);
