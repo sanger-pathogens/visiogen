@@ -12,11 +12,10 @@ Check out [CBL](https://github.com/imartayan/CBL/tree/main) for more details.
 
 ## 🔧 Features
 
-* Extract kmers from genes in GFF files
-* Filter kmers based on GC content, center base, or off-targets
+* Generate probes from GFA graphs or GFF files
+* Filter kmers based on GC content, center base, or other sequence characteristics
+* Build off target kmer indexes from FASTA inputs
 * Query kmers against index files to assess off-target risk
-* Generate probes from GFA graphs
-* Build kmer indexes from FASTA inputs
 
 ---
 
@@ -71,13 +70,11 @@ visiogen graph -g graph.gfa -t 0.95
 visiogen build -i fasta_dir
 ```
 
-### 🔹 Graph Mode: Generate probes from a GFA assembly graph
+### 🔹 After indexing the fasta_dir you can use it as an off target database
 
 ```bash
 visiogen graph -g graph.gfa -t 0.95 -i fasta_dir
 ```
-
-> **_NOTE:_**  After indexing the fasta_dir you can use it as an off target database
 
 ---
 
@@ -152,6 +149,7 @@ Generate kmers from a GFA-format assembly graph.
 
 ## 🧼 Logging Examples
 
+```
 13:31:06 [INFO] Found 4 strains; retaining segments with SR:i ≥ 4 (threshold = 0.95)
 13:31:06 [INFO] Total segments available: 1008
 13:31:06 [INFO] Segments passing strain threshold: 93
@@ -162,6 +160,7 @@ Generate kmers from a GFA-format assembly graph.
 13:31:06 [INFO] Reading the index stored in fastas/GCA_037443265.cbl
 13:31:07 [INFO] Kmer CCGCCGACTGCCCCAAATTCACGCTGTCAGAGACGGTATTGGCGATATCG (gene: s984) found in 1 index(es):
 13:31:07 [INFO]   - fastas/GCA_000069185.cbl
+```
 
 ---
 
@@ -187,6 +186,6 @@ Offer precompiled binaries or automated builds for common platforms (e.g., Linux
 
 ## 📫 Feedback / Contributions
 
-PRs and issues welcome!
+Issues welcome! This was a learning project for me and any feedback or ideas are welcome 😊
 
-> **_NOTE:_**  Remember that we always strongly recommend additionally manually BLASTing the selected probes before proceeding with ordering them
+> **⚠️ WARNING:** Always manually BLAST the selected probes before ordering them to verify specificity and avoid off-target binding.
