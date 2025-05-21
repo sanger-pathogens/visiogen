@@ -24,7 +24,7 @@ mod utils;
 
 fn set_up_logging() {
     let current_time = Local::now().format("%m-%d_%H-%M-%S").to_string();
-    let log_filename = format!("visium_{}.log", current_time);
+    let log_filename = format!("visiogen_{}.log", current_time);
 
     CombinedLogger::init(vec![
         TermLogger::new(
