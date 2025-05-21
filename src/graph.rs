@@ -9,6 +9,12 @@ use visiogen::FilteredKmers;
 use crate::cli::GraphArgs;
 use crate::kmer;
 
+#[derive(Default)]
+struct SegmentConnectivity {
+    incoming: HashSet<String>,
+    outgoing: HashSet<String>,
+}
+
 pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredKmers> {
     let file = File::open(&graph_args.gfa_path).expect("Failed to open input GFA");
     let reader = BufReader::new(file);
@@ -39,21 +45,24 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
             let from = parts[1].to_string();
             let to = parts[3].to_string();
 
-            segment_connectivity.entry(from.clone())
+            segment_connectivity
+                .entry(from.clone())
                 .or_default()
                 .outgoing
                 .insert(to.clone());
-            segment_connectivity.entry(to.clone())
+            segment_connectivity
+                .entry(to.clone())
                 .or_default()
                 .incoming
                 .insert(from.clone());
         }
     }
 
-    // Start walking from "s1"
+    // Start walking from "s1" with global path count logic
     let mut current = "s1".to_string();
     let mut visited = HashSet::new();
     let mut unique_path_segments = Vec::new();
+    let mut path_count = 1; // start with one active path
 
     loop {
         if visited.contains(&current) {
@@ -61,23 +70,33 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
         }
         visited.insert(current.clone());
 
-        let conn = segment_connectivity.get(&current);
-        if conn.is_none() {
-            break;
-        }
+        let conn = match segment_connectivity.get(&current) {
+            Some(c) => c,
+            None => break,
+        };
 
-        let conn = conn.unwrap();
-        let outgoing = &conn.outgoing;
-        let incoming = &conn.incoming;
+        let incoming_len = conn.incoming.len();
+        let outgoing_len = conn.outgoing.len();
 
-        // Unique if exactly one in and one out
-        if incoming.len() <= 1 && outgoing.len() == 1 {
+        // Always add s1, and any segment where path_count == 1
+        if current == "s1" || path_count == 1 {
             unique_path_segments.push(current.clone());
         }
 
-        // Choose the lowest-numbered next segment if multiple
-        let next = outgoing.iter()
-            .min_by_key(|s| s[1..].parse::<u64>().unwrap_or(u64::MAX)); // strip 's' and parse
+        // Adjust path count for branch and convergence
+        if outgoing_len > 1 {
+            path_count += outgoing_len - 1;
+        }
+        if incoming_len > 1 {
+            path_count = path_count.saturating_sub(incoming_len - 1);
+        }
+
+        // Choose lowest-numbered unvisited next segment
+        let next = conn
+            .outgoing
+            .iter()
+            .filter(|s| !visited.contains(*s))
+            .min_by_key(|s| s[1..].parse::<u64>().unwrap_or(u64::MAX));
 
         match next {
             Some(n) => current = n.clone(),
