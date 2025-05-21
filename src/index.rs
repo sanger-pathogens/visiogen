@@ -117,11 +117,11 @@ pub fn build_indexes_for_all_fastas(
 
 pub fn query_kmers_across_indexes(
     index_directory: &Path,
-    filtered_kmers: Vec<kmer_visium::FilteredKmers>,
+    mut filtered_kmers: Vec<visiogen::FilteredKmers>,
     threads: usize,
     max_hits: usize,
     recursive: bool,
-) -> Result<Vec<kmer_visium::FilteredKmers>, Box<dyn std::error::Error>> {
+) -> Result<Vec<visiogen::FilteredKmers>, Box<dyn std::error::Error>> {
     utils::configure_thread_pool(threads);
 
     let index_files = utils::find_files_with_extensions(index_directory, &["cbl"], recursive)?;
@@ -133,11 +133,16 @@ pub fn query_kmers_across_indexes(
 
     info!("Found {} index files to search", total_indexes);
 
-    let kmer_to_fk: HashMap<String, &kmer_visium::FilteredKmers> = filtered_kmers
-        .iter()
-        .flat_map(|fk| fk.kmers.keys().map(move |k| (k.clone(), fk)))
-        .collect();
-    let kmers: Vec<String> = kmer_to_fk.keys().cloned().collect();
+    let mut kmer_to_fk_index: HashMap<String, usize> = HashMap::new();
+    let mut kmers: Vec<String> = Vec::new();
+
+    for (i, fk) in filtered_kmers.iter().enumerate() {
+        for k in fk.kmers.keys() {
+            kmer_to_fk_index.insert(k.clone(), i);
+            kmers.push(k.clone());
+        }
+    }
+
     info!("Loaded {} kmers from filtered_kmers", kmers.len());
 
     let results: Arc<Mutex<HashMap<String, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -172,24 +177,47 @@ pub fn query_kmers_across_indexes(
     progress.finish_with_message("Kmer query complete.");
 
     let results = results.lock().unwrap();
+
+    for (kmer, files) in results.iter() {
+        if let Some(&fk_index) = kmer_to_fk_index.get(kmer) {
+            let fk = &mut filtered_kmers[fk_index];
+            fk.kmer_hits
+                .entry(kmer.clone())
+                .or_default()
+                .extend(files.clone());
+        }
+    }
+
     let filtered = filtered_kmers
         .into_iter()
         .filter(|fk| {
-            fk.kmers.keys().any(|k| {
-                match results.get(k) {
-                    Some(files) => files.len() <= max_hits,
-                    None => true, //0 hits or just below max hits
-                }
+            fk.kmers.keys().any(|k| match fk.kmer_hits.get(k) {
+                Some(files) => files.len() <= max_hits,
+                None => true,
             })
         })
         .collect::<Vec<_>>();
 
-    for (kmer, files) in results.iter().filter(|(_, v)| v.len() <= max_hits) {
-        info!("Kmer {} found in {} index(es):", kmer, files.len());
-        for f in files {
-            info!("  - {}", f);
+    for fk in &filtered {
+        for (kmer, files) in fk.kmer_hits.iter().filter(|(_, v)| v.len() <= max_hits) {
+            info!(
+                "Kmer {} (gene: {}) found in {} index(es):",
+                kmer,
+                fk.gene,
+                files.len()
+            );
+            for f in files {
+                info!("  - {}", f);
+            }
         }
     }
+
+    let num_unmatched = kmers.iter().filter(|k| !results.contains_key(*k)).count();
+    info!(
+        "{} of {} kmers had no hits in any index.",
+        num_unmatched,
+        kmers.len()
+    );
 
     if filtered.is_empty() {
         warn!("All kmers were filtered out - no kmers matched the criteria");

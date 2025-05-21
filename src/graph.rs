@@ -1,10 +1,10 @@
-use kmer_visium::FilteredKmers;
 use log::*;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use visiogen::FilteredKmers;
 
 use crate::cli::GraphArgs;
 use crate::kmer;
@@ -81,6 +81,7 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
                 end,
                 kmers: tiled,
                 strand,
+                kmer_hits: HashMap::new(),
             })
         })
         .collect();

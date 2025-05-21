@@ -13,7 +13,7 @@ use std::path::Path;
 use crate::cli::GffArgs;
 use crate::cli::KmerOptions;
 use crate::index::query_kmers_across_indexes;
-use kmer_visium::FilteredKmers;
+use visiogen::FilteredKmers;
 
 mod cli;
 mod graph;
@@ -43,13 +43,13 @@ fn set_up_logging() {
 }
 
 fn filter_kmers(
-    filtered_kmers_vec: &Vec<kmer_visium::FilteredKmers>,
+    filtered_kmers_vec: &Vec<visiogen::FilteredKmers>,
     kmer_size: usize,
     center_base: Option<char>,
     min_gc: usize,
     max_gc: usize,
     skip_gc: bool,
-) -> Vec<kmer_visium::FilteredKmers> {
+) -> Vec<visiogen::FilteredKmers> {
     filtered_kmers_vec
         .iter()
         .map(|filtered_kmers| {
@@ -82,18 +82,19 @@ fn filter_kmers(
                 })
                 .collect();
 
-            kmer_visium::FilteredKmers {
+            visiogen::FilteredKmers {
                 gene: filtered_kmers.gene.clone(),
                 start: filtered_kmers.start.clone(),
                 end: filtered_kmers.end.clone(),
                 kmers: valid_kmers,
                 strand: filtered_kmers.strand.clone(),
+                kmer_hits: HashMap::new(),
             }
         })
         .collect()
 }
 
-fn log_kmers_with_coords(filtered_kmers: &kmer_visium::FilteredKmers, kmer_size: usize) {
+fn log_kmers_with_coords(filtered_kmers: &visiogen::FilteredKmers, kmer_size: usize) {
     for (kmer, start_coords) in &filtered_kmers.kmers {
         for &start in start_coords {
             let end = if filtered_kmers.strand == "-" {

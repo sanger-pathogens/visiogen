@@ -28,3 +28,4 @@ Cargo.lock
 *.fastas
 fastas/
 kmer-data/
+visiogen

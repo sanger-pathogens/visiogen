@@ -1,9 +1,9 @@
 use bio_types::strand::Strand;
 use dashmap::DashMap;
-use kmer_visium::FilteredKmers;
 use log::*;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use visiogen::FilteredKmers;
 
 use crate::seq;
 
@@ -84,6 +84,7 @@ pub fn generate_gene_kmers(
                         end,
                         kmers: processed_kmers,
                         strand: strand.to_string(),
+                        kmer_hits: HashMap::new(),
                     })
                 }
             } else {

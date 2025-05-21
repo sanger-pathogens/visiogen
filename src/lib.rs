@@ -7,4 +7,5 @@ pub struct FilteredKmers {
     pub end: u64,
     pub kmers: HashMap<String, Vec<usize>>,
     pub strand: String,
+    pub kmer_hits: HashMap<String, Vec<String>>,
 }
