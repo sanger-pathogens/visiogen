@@ -1,0 +1,22 @@
+[package]
+name = "visiogen"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+simplelog = "0.12.2"
+log = "0.4"
+bio = "2.0.3"
+bio-types = "1.0.4"
+rayon = "1.7"
+dashmap = "6.1.0"
+indicatif = "0.17"
+chrono = "0.4"
+cbl = { git = "https://github.com/imartayan/CBL.git" }
+serde = "1.0.219"
+needletail = "0.5.1"
+bincode = "1.3"
+tempfile = "3.3"
+num_cpus = "1.13"
+walkdir = "2"

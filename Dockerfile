@@ -1,0 +1,31 @@
+FROM ubuntu:22.04 AS builder
+
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    cmake \
+    g++ \
+    clang \
+    llvm-dev \
+    libstdc++-12-dev \
+    libclang-dev \
+    pkg-config \
+    musl-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install a specific Rust nightly version (May 31, 2024)
+RUN rustup install nightly-2024-05-31
+
+WORKDIR /app
+
+COPY . .
+
+RUN cargo +nightly-2024-05-31 build --release
+
+FROM ubuntu:22.04 AS runtime
+
+COPY --from=builder /app/target/release/kmer-visium /usr/local/bin/kmer-visium
+
