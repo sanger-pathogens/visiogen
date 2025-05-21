@@ -155,7 +155,7 @@ fn traverse_bubble_depth(
         // Update bubble depth when we have branching paths
         if new_bubbles > 0 {
             bubble_depth += new_bubbles;
-            info!("Entering bubble at {}: depth increased to {}", 
+            debug!("Entering bubble at {}: depth increased to {}", 
                   graph[current_node], bubble_depth);
         }
 
@@ -179,16 +179,16 @@ fn traverse_bubble_depth(
                     };
 
                     bubble_depth = bubble_depth.saturating_sub(merges_to_subtract);
-                    info!("Merging bubble at {}: subtracted {}, depth now {}", 
+                    debug!("Merging bubble at {}: subtracted {}, depth now {}", 
                           graph[next_node], merges_to_subtract, bubble_depth);
                 }
 
                 // Only add to segments if we're not in a bubble
                 if bubble_depth == 0 {
                     segments.push(graph[next_node].clone());
-                    info!("Adding segment: {}", graph[next_node]);
+                    debug!("Adding segment: {}", graph[next_node]);
                 } else {
-                    info!("Skipping segment {} (depth {})", 
+                    debug!("Skipping segment {} (depth {})", 
                           graph[next_node], bubble_depth);
                 }
                 
@@ -256,7 +256,7 @@ fn investigate_bubble(
         }
     }
 
-    info!("Bubble investigation at {}: found {} merging edges", 
+    debug!("Bubble investigation at {}: found {} merging edges", 
           graph[merge_node], merge_count);
     merge_count
 }
