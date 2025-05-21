@@ -16,14 +16,16 @@ struct SegmentConnectivity {
 }
 
 pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredKmers> {
+    use std::collections::{HashMap, HashSet};
+
     let file = File::open(&graph_args.gfa_path).expect("Failed to open input GFA");
     let reader = BufReader::new(file);
 
     let mut segment_seqs: HashMap<String, String> = HashMap::new();
     let mut segment_starts: HashMap<String, u64> = HashMap::new();
-    let mut segment_connectivity: HashMap<String, SegmentConnectivity> = HashMap::new();
+    let mut connectivity: HashMap<String, SegmentConnectivity> = HashMap::new();
 
-    // Parse segments and links
+    // --- PASS 1: Parse and record connectivity + sequences ---
     for line in reader.lines() {
         let line = line.expect("Failed to read line");
         let parts: Vec<&str> = line.split('\t').collect();
@@ -45,12 +47,12 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
             let from = parts[1].to_string();
             let to = parts[3].to_string();
 
-            segment_connectivity
+            connectivity
                 .entry(from.clone())
                 .or_default()
                 .outgoing
                 .insert(to.clone());
-            segment_connectivity
+            connectivity
                 .entry(to.clone())
                 .or_default()
                 .incoming
@@ -58,11 +60,11 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
         }
     }
 
-    // Start walking from "s1" with global path count logic
+    // --- PASS 2: Traverse using precomputed in/out counts ---
     let mut current = "s1".to_string();
     let mut visited = HashSet::new();
     let mut unique_path_segments = Vec::new();
-    let mut path_count = 1; // start with one active path
+    let mut path_count = 1;
 
     loop {
         if visited.contains(&current) {
@@ -70,25 +72,23 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
         }
         visited.insert(current.clone());
 
-        let conn = match segment_connectivity.get(&current) {
+        let conn = match connectivity.get(&current) {
             Some(c) => c,
             None => break,
         };
 
-        let incoming_len = conn.incoming.len();
-        let outgoing_len = conn.outgoing.len();
+        let in_deg = conn.incoming.len();
+        let out_deg = conn.outgoing.len();
 
-        // Always add s1, and any segment where path_count == 1
         if current == "s1" || path_count == 1 {
             unique_path_segments.push(current.clone());
         }
 
-        // Adjust path count for branch and convergence
-        if outgoing_len > 1 {
-            path_count += outgoing_len - 1;
+        if out_deg > 1 {
+            path_count += out_deg - 1;
         }
-        if incoming_len > 1 {
-            path_count = path_count.saturating_sub(incoming_len - 1);
+        if in_deg > 1 {
+            path_count = path_count.saturating_sub(in_deg - 1);
         }
 
         // Choose lowest-numbered unvisited next segment
@@ -106,7 +106,7 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
 
     info!("Identified {} unique path segments", unique_path_segments.len());
 
-    // Generate kmers for each segment on the path
+    // --- Generate kmers ---
     let filtered_kmers: Vec<FilteredKmers> = unique_path_segments
         .par_iter()
         .filter_map(|seg_id| {
