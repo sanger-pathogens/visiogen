@@ -27,5 +27,5 @@ RUN cargo +nightly-2024-05-31 build --release
 
 FROM ubuntu:22.04 AS runtime
 
-COPY --from=builder /app/target/release/kmer-visium /usr/local/bin/kmer-visium
+COPY --from=builder /app/target/release/visiogen /usr/local/bin/visiogen
 
