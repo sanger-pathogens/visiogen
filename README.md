@@ -2,7 +2,7 @@
 
 ![Rust Version](https://img.shields.io/badge/Rust-nightly--2024--05--31-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)
-![Issues](https://img.shields.io/github/issues/sanger-pathogens/visiogen)
+![Issues](https://img.shields.io/github/sanger-pathogens/visiogen/issues)
 
 **Visiogen** is a high-performance tool for producing probes using **kmers** from genomic annotations/graphs. It supports GFF-based gene input, graph-based input, and kmer indexing with customizable filtering using the CBL libary.
 
