@@ -15,9 +15,9 @@ pub fn parse_fasta(fasta_path: String) -> Result<String, io::Error> {
     let mut result_seq = String::new();
 
     for record in fasta_reader.records() {
-        let record = record?; // incase it errors
+        let record = record?;
         let seq = record.seq();
-        let seq_str = String::from_utf8_lossy(seq); // Convert &[u8] to &str
+        let seq_str = String::from_utf8_lossy(seq);
 
         if seq_count == 0 {
             result_seq = seq_str.to_string();
@@ -55,7 +55,6 @@ pub fn isfile(file_path: String) -> io::Result<File> {
 }
 
 /// Find all files with the given extensions (e.g., ["fa", "fasta"]) in a directory.
-/// If `recursive` is true, searches subdirectories as well.
 pub fn find_files_with_extensions(
     directory: &Path,
     extensions: &[&str],

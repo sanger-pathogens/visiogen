@@ -53,7 +53,6 @@ pub fn build_indexes_for_all_fastas(
 ) -> Result<(), Box<dyn std::error::Error>> {
     utils::configure_thread_pool(threads);
 
-    // Find FASTA files
     let fasta_files =
         utils::find_files_with_extensions(fasta_directory, &["fasta", "fa"], recursive)?;
     let total_files = fasta_files.len();
@@ -64,14 +63,13 @@ pub fn build_indexes_for_all_fastas(
 
     info!("Found {} FASTA files to index", total_files);
 
-    // Create a thread-safe progress bar
+    // progress bar
     let progress = ProgressBar::new(total_files as u64);
     progress.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
         .unwrap()
         .progress_chars("##-"));
 
-    // Parallel processing
     fasta_files.par_iter().for_each(|fasta_path| {
         info!("Indexing {:?}", fasta_path);
 

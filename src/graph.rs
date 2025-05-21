@@ -71,7 +71,7 @@ pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredK
             let seq = segment_seqs.get(seg_id)?;
             let start = *segment_starts.get(seg_id)?;
             let end = start + seq.len() as u64;
-            let strand = "+".to_string(); // default strand for now
+            let strand = "+".to_string(); // Not sure just setting strand to +
 
             let tiled = kmer::tile_segment(seq, start as usize, kmer_size);
 

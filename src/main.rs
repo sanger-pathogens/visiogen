@@ -147,7 +147,7 @@ fn log_and_write_kmers(all_filtered_kmers: &[FilteredKmers], kmer_size: usize) {
     // Write all kmers to a timestamped .fasta file
     write_all_keys_to_file(all_filtered_kmers);
 
-    // Log metadata and optionally detailed coordinates
+    // Log metadata
     for filtered in all_filtered_kmers {
         info!("Gene: {}", filtered.gene);
         info!("Strand: {}", filtered.strand);

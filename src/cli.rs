@@ -14,14 +14,13 @@ EXAMPLES:
     visiogen gff -f input.fa -a annotation.gff -g gene1,gene2,gene3 -k 50
   
   Other commands:
-    visiogen build -i fasta_dir -o output.idx
+    visiogen build -i fasta_dir
     visiogen graph -g graph.gfa -t 0.95",
     subcommand_required = true,
     arg_required_else_help = true
 )]
 
 pub struct Args {
-    /// Number of threads to use (0 = use all available cores)
     #[arg(
         short = 't',
         long = "threads",
@@ -31,7 +30,6 @@ pub struct Args {
     )]
     pub threads: usize,
 
-    /// Directory containing off-target FASTA/index files
     #[arg(
         short = 'i',
         long = "off_target_directory",
@@ -40,7 +38,6 @@ pub struct Args {
     )]
     pub off_target_directory: Option<String>,
 
-    /// Maximum number of index hits to report per kmer (used for querying)
     #[arg(
         long = "max_hits",
         default_value_t = 5,
@@ -49,7 +46,6 @@ pub struct Args {
     )]
     pub max_hits: usize,
 
-    /// Recursively search directories (used for indexing and querying)
     #[arg(
         short = 'r',
         long = "recursive",
@@ -59,50 +55,62 @@ pub struct Args {
     )]
     pub recursive: bool,
 
-    /// Kmer options
     #[command(flatten)]
     pub kmer_options: KmerOptions,
 
-    /// Subcommand
     #[command(subcommand)]
     pub command: Commands,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Work with GFF annotations and FASTA files
     Gff(GffArgs),
 
-    /// Graph based args
     Graph(GraphArgs),
 
-    /// Build an off target index
     Build(BuildArgs),
 }
 
 #[derive(Parser)]
 pub struct GffArgs {
-    /// Input file - GFF
-    #[arg(short = 'a', long = "annotation")]
-    pub in_gff: String, // Changed from Option<String> to String since it's required in GFF mode
+    #[arg(
+        short = 'a',
+        long = "annotation"
+    )]
+    pub in_gff: String,
 
-    /// Input file - FASTA
-    #[arg(short = 'f', long = "fasta")]
-    pub in_fasta: String, // Changed from Option<String> to String
+    #[arg(
+        short = 'f',
+        long = "fasta"
+    )]
+    pub in_fasta: String,
 
     /// Comma-separated list of gene names
-    #[arg(short = 'g', long = "genes", value_delimiter = ',', required = true)]
+    #[arg(
+        short = 'g',
+        long = "genes",
+        value_delimiter = ',',
+        required = true,
+        help = "List of gene identifiers comma seperated"
+    )]
     pub genes: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
 pub struct GraphArgs {
-    /// Input GFA file
-    #[arg(short = 'g', long = "gfa")]
+    #[arg(
+        short = 'g',
+        long = "gfa",
+        help = "graph to generate probes from"
+    )]
     pub gfa_path: String,
 
     /// Core segment inclusion threshold (fraction)
-    #[arg(short = 't', long = "threshold", default_value_t = 0.95)]
+    #[arg(
+        short = 't',
+        long = "threshold",
+        default_value_t = 0.95
+    )]
     pub threshold: f64,
 }
 

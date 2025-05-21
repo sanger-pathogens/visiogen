@@ -42,7 +42,7 @@ pub fn filter_hashmap<'a>(
     allow_outside: bool,
 ) -> HashMap<String, Vec<usize>> {
     kmer_hash
-        .iter() // Iterate over references to the entries
+        .iter()
         .filter_map(|(key, indices)| {
             if allow_outside {
                 // Use `all` to check if all indices are within range
