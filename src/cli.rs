@@ -73,16 +73,10 @@ pub enum Commands {
 
 #[derive(Parser)]
 pub struct GffArgs {
-    #[arg(
-        short = 'a',
-        long = "annotation"
-    )]
+    #[arg(short = 'a', long = "annotation")]
     pub in_gff: String,
 
-    #[arg(
-        short = 'f',
-        long = "fasta"
-    )]
+    #[arg(short = 'f', long = "fasta")]
     pub in_fasta: String,
 
     /// Comma-separated list of gene names
@@ -98,20 +92,8 @@ pub struct GffArgs {
 
 #[derive(Parser, Debug)]
 pub struct GraphArgs {
-    #[arg(
-        short = 'g',
-        long = "gfa",
-        help = "graph to generate probes from"
-    )]
+    #[arg(short = 'g', long = "gfa", help = "graph to generate probes from")]
     pub gfa_path: String,
-
-    /// Core segment inclusion threshold (fraction)
-    #[arg(
-        short = 't',
-        long = "threshold",
-        default_value_t = 0.95
-    )]
-    pub threshold: f64,
 }
 
 #[derive(Parser, Clone)]

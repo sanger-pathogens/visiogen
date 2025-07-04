@@ -1,287 +1,175 @@
 use log::*;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use visiogen::FilteredKmers;
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
 
 use crate::cli::GraphArgs;
 use crate::kmer;
 
-#[derive(Debug)]
-struct Segment {
-    id: String,
-    sequence: String,
-    start: u64,
+use std::collections::HashMap;
+use std::io::BufRead;
+
+pub struct Gfa {
+    pub segments: Vec<Segment>,
+    pub links: Vec<Link>,
+    pub paths: Vec<GfaPath>,
 }
 
-#[derive(Debug)]
-struct EdgeAttributes {
-    sr: u32,
-}
+impl Gfa {
+    /// Return segment names that appear exactly once in all paths (core)
+    pub fn core_segments(&self) -> Vec<String> {
+        let path_count = self.paths.len();
+        let mut segment_in_path_counts: HashMap<String, usize> = HashMap::new();
 
-fn parse_segments(path: &str) -> (HashMap<String, Segment>, Vec<String>) {
-    let file = File::open(path).expect("Failed to open GFA file");
-    let reader = BufReader::new(file);
+        for path in &self.paths {
+            let mut segment_seen: HashMap<String, usize> = HashMap::new();
 
-    let mut segments: HashMap<String, Segment> = HashMap::new();
-    let mut segment_order: Vec<String> = Vec::new();
+            for (segment_name, _) in &path.segments {
+                *segment_seen.entry(segment_name.clone()).or_insert(0) += 1;
+            }
 
-    for line in reader.lines() {
-        let line = line.expect("Failed to read line");
-        if !line.starts_with('S') {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.split('\t').collect();
-        let seg_id = parts[1].to_string();
-        let seq = parts[2].to_string();
-        let mut so = 0u64;
-
-        for field in &parts[3..] {
-            if field.starts_with("SO:i:") {
-                so = field[5..].parse().unwrap_or(0);
+            for (seg, count) in segment_seen {
+                if count == 1 {
+                    *segment_in_path_counts.entry(seg).or_insert(0) += 1;
+                }
             }
         }
 
-        segments.insert(
-            seg_id.clone(),
-            Segment {
-                id: seg_id.clone(),
-                sequence: seq,
-                start: so,
-            },
-        );
-        segment_order.push(seg_id);
-    }
-
-    (segments, segment_order)
-}
-
-fn parse_links(path: &str) -> Vec<(String, String, u32)> {
-    let file = File::open(path).expect("Failed to open GFA file");
-    let reader = BufReader::new(file);
-    let mut links = Vec::new();
-
-    for line in reader.lines() {
-        let line = line.expect("Failed to read line");
-        if !line.starts_with('L') {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 6 {
-            continue;
-        }
-
-        let from = parts[1].to_string();
-        let to = parts[3].to_string();
-
-        let mut sr_val = 0u32;
-        for field in &parts[5..] {
-            if field.starts_with("SR:i:") {
-                sr_val = field[5..].parse().unwrap_or(0);
-                break;
-            }
-        }
-
-        links.push((from, to, sr_val));
-    }
-
-    links
-}
-
-fn build_graph(
-    segments: &HashMap<String, Segment>,
-    links: &[(String, String, u32)],
-) -> (DiGraph<String, EdgeAttributes>, HashMap<String, NodeIndex>) {
-    let mut graph = DiGraph::<String, EdgeAttributes>::new();
-    let mut node_map = HashMap::new();
-
-    // Add nodes
-    for seg_id in segments.keys() {
-        let node = graph.add_node(seg_id.clone());
-        node_map.insert(seg_id.clone(), node);
-    }
-
-    // Add edges
-    for (from, to, sr) in links {
-        if let (Some(&from_node), Some(&to_node)) = (node_map.get(from), node_map.get(to)) {
-            graph.add_edge(from_node, to_node, EdgeAttributes { sr: *sr });
-        }
-    }
-
-    (graph, node_map)
-}
-
-fn traverse_bubble_depth(
-    graph: &DiGraph<String, EdgeAttributes>,
-    node_map: &HashMap<String, NodeIndex>,
-    start_id: &str,
-) -> Vec<String> {
-    let mut segments = Vec::new();
-    let mut visited = HashSet::new();
-    let mut current_node = match node_map.get(start_id) {
-        Some(&n) => n,
-        None => return segments,
-    };
-
-    let mut bubble_depth = 0;
-    segments.push(graph[current_node].clone());
-    visited.insert(current_node);
-
-    // Track which edges we've actually traversed
-    let mut traversed_edges = HashSet::new();
-
-    loop {
-        // Get all outgoing edges
-        let outgoing_edges: Vec<_> = graph.edges_directed(current_node, Direction::Outgoing).collect();
-        
-        // Partition into SR0 and non-SR0 edges
-        let (sr0_edges, non_sr0_edges): (Vec<_>, Vec<_>) = 
-            outgoing_edges.into_iter().partition(|e| e.weight().sr == 0);
-
-        // Find the next SR0 edge to follow (should be only one unvisited)
-        let next_sr0_edge = sr0_edges.iter()
-            .find(|e| !visited.contains(&e.target()));
-
-        // Count potential bubble branches (non-SR0 edges)
-        let new_bubbles = non_sr0_edges.iter()
-            .filter(|e| !visited.contains(&e.target()))
-            .count();
-
-        // Update bubble depth when we have branching paths
-        if new_bubbles > 0 {
-            bubble_depth += new_bubbles;
-            debug!("Entering bubble at {}: depth increased to {}", 
-                  graph[current_node], bubble_depth);
-        }
-
-        match next_sr0_edge {
-            Some(edge) => {
-                let next_node = edge.target();
-                traversed_edges.insert((current_node, next_node));
-                visited.insert(next_node);
-                
-                // Check for any incoming edges that represent bubble merges
-                let incoming_non_sr0: Vec<_> = graph.edges_directed(next_node, Direction::Incoming)
-                    .filter(|e| e.weight().sr != 0)
-                    .collect();
-
-                if !incoming_non_sr0.is_empty() {
-                    // When we're in a complex bubble (depth >= 2), investigate properly
-                    let merges_to_subtract = if bubble_depth >= 2 {
-                        investigate_bubble(graph, next_node, &traversed_edges)
+        segment_in_path_counts
+            .into_iter()
+            .filter_map(
+                |(seg, count)| {
+                    if count == path_count {
+                        Some(seg)
                     } else {
-                        incoming_non_sr0.len()
-                    };
-
-                    bubble_depth = bubble_depth.saturating_sub(merges_to_subtract);
-                    debug!("Merging bubble at {}: subtracted {}, depth now {}", 
-                          graph[next_node], merges_to_subtract, bubble_depth);
-                }
-
-                // Only add to segments if we're not in a bubble
-                if bubble_depth == 0 {
-                    segments.push(graph[next_node].clone());
-                    debug!("Adding segment: {}", graph[next_node]);
-                } else {
-                    debug!("Skipping segment {} (depth {})", 
-                          graph[next_node], bubble_depth);
-                }
-                
-                current_node = next_node;
-            },
-            None => {
-                // No SR0 edges available - try non-SR0 edges if we're in a bubble
-                if bubble_depth > 0 {
-                    if let Some(edge) = non_sr0_edges.iter()
-                        .find(|e| !visited.contains(&e.target())) 
-                    {
-                        let next_node = edge.target();
-                        info!("Following bubble path to {}", graph[next_node]);
-                        traversed_edges.insert((current_node, next_node));
-                        visited.insert(next_node);
-                        current_node = next_node;
-                    } else {
-                        break;
+                        None
                     }
-                } else {
-                    break; // No SR0 edges and not in a bubble
-                }
-            }
-        }
+                },
+            )
+            .collect()
     }
 
-    segments
+    /// Return full Segment structs instead of just names
+    pub fn core_segment_structs(&self) -> Vec<&Segment> {
+        let core_names = self.core_segments();
+        let name_set: std::collections::HashSet<_> = core_names.iter().collect();
+
+        self.segments
+            .iter()
+            .filter(|seg| name_set.contains(&seg.name))
+            .collect()
+    }
 }
 
-fn investigate_bubble(
-    graph: &DiGraph<String, EdgeAttributes>,
-    merge_node: NodeIndex,
-    traversed_edges: &HashSet<(NodeIndex, NodeIndex)>,
-) -> usize {
-    let mut visited_nodes = HashSet::new();
-    let mut visited_edges = HashSet::new();
-    let mut queue = VecDeque::new();
-    let mut merge_count = 0;
+enum GfaLine {
+    Segment(Segment),
+    Link(Link),
+    Path(GfaPath),
+    Other(String),
+}
 
-    // Start with all incoming non-SR0 edges to the merge node
-    for edge in graph.edges_directed(merge_node, Direction::Incoming) {
-        if edge.weight().sr != 0 {
-            queue.push_back((edge.source(), edge.id()));
+#[derive(Debug)]
+pub struct Segment {
+    pub name: String,
+    pub sequence: String,
+}
+
+#[derive(Debug)]
+pub struct Link {
+    from: String,
+    from_orient: char,
+    to: String,
+    to_orient: char,
+    overlap: String,
+}
+
+#[derive(Debug)]
+pub struct GfaPath {
+    name: String,
+    segments: Vec<(String, char)>,
+    overlaps: Vec<String>,
+}
+
+fn parse_line(line: &str) -> Option<GfaLine> {
+    let fields: Vec<&str> = line.split('\t').collect();
+
+    match fields.get(0)? {
+        &"S" => Some(GfaLine::Segment(Segment {
+            name: fields.get(1)?.to_string(),
+            sequence: fields.get(2)?.to_string(),
+        })),
+        &"L" => Some(GfaLine::Link(Link {
+            from: fields.get(1)?.to_string(),
+            from_orient: fields.get(2)?.chars().next()?,
+            to: fields.get(3)?.to_string(),
+            to_orient: fields.get(4)?.chars().next()?,
+            overlap: fields.get(5)?.to_string(),
+        })),
+        &"P" => {
+            let name = fields.get(1)?.to_string();
+            let segments: Vec<(String, char)> = fields
+                .get(2)?
+                .split(',')
+                .map(|s| {
+                    let (seg, orient) = s.split_at(s.len() - 1);
+                    (seg.to_string(), orient.chars().next().unwrap())
+                })
+                .collect();
+
+            let overlaps = fields.get(3)?.split(',').map(|o| o.to_string()).collect();
+
+            Some(GfaLine::Path(GfaPath {
+                name,
+                segments,
+                overlaps,
+            }))
         }
+        _ => Some(GfaLine::Other(line.to_string())),
     }
+}
 
-    while let Some((node, edge_id)) = queue.pop_front() {
-        if visited_nodes.contains(&node) {
+pub fn parse_gfa_file(path: &str) -> std::io::Result<Gfa> {
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+
+    let mut segments = Vec::new();
+    let mut links = Vec::new();
+    let mut paths = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with('#') || line.is_empty() {
             continue;
         }
-        visited_nodes.insert(node);
-        visited_edges.insert(edge_id);
 
-        // Check ALL incoming edges to this node
-        for edge in graph.edges_directed(node, Direction::Incoming) {
-            if edge.weight().sr == 0 {
-                // Found connection to main SR0 path - count this edge
-                if traversed_edges.contains(&(edge.source(), node)) {
-                    merge_count += 1;
-                }
-            } else if !visited_edges.contains(&edge.id()) {
-                // Continue tracing back through non-SR0 edges we haven't processed
-                queue.push_back((edge.source(), edge.id()));
+        if let Some(parsed) = parse_line(&line) {
+            match parsed {
+                GfaLine::Segment(s) => segments.push(s),
+                GfaLine::Link(l) => links.push(l),
+                GfaLine::Path(p) => paths.push(p),
+                GfaLine::Other(_) => (),
             }
         }
     }
 
-    debug!("Bubble investigation at {}: found {} merging edges", 
-          graph[merge_node], merge_count);
-    merge_count
+    Ok(Gfa {
+        segments,
+        links,
+        paths,
+    })
 }
-
 
 pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredKmers> {
-    let (segments, _segment_order) = parse_segments(&graph_args.gfa_path);
-    let links = parse_links(&graph_args.gfa_path);
+    let graph = parse_gfa_file(&graph_args.gfa_path).expect("Failed to read GFA file");
 
-    let (graph, node_map) = build_graph(&segments, &links);
-
-    let chosen_segments = traverse_bubble_depth(&graph, &node_map, "s1");
-
-    let filtered_kmers: Vec<FilteredKmers> = chosen_segments
+    let filtered_kmers: Vec<FilteredKmers> = graph
+        .core_segment_structs()
         .iter()
-        .filter_map(|seg_id| {
-            let segment = segments.get(seg_id)?;
-            Some(FilteredKmers {
-                gene: seg_id.clone(),
-                start: segment.start,
-                end: segment.start + segment.sequence.len() as u64,
-                kmers: kmer::tile_segment(&segment.sequence, segment.start as usize, kmer_size),
-                strand: "+".to_string(),
-                kmer_hits: HashMap::new(),
-            })
+        .map(|segment| FilteredKmers {
+            gene: segment.name.clone(),
+            start: 1,
+            end: 1 + segment.sequence.len() as u64,
+            kmers: kmer::tile_segment(&segment.sequence, 1 as usize, kmer_size),
+            strand: "+".to_string(),
+            kmer_hits: HashMap::new(),
         })
         .collect();
 
