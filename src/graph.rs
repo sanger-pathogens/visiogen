@@ -1,8 +1,7 @@
-use log::*;
-use visiogen::FilteredKmers;
-
 use crate::cli::GraphArgs;
-use crate::kmer;
+use crate::GeneKmers;
+use crate::Probes;
+use log::*;
 
 use std::collections::HashMap;
 use std::io::BufRead;
@@ -157,17 +156,17 @@ pub fn parse_gfa_file(path: &str) -> std::io::Result<Gfa> {
     })
 }
 
-pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<FilteredKmers> {
+pub fn run_graph_mode(graph_args: &GraphArgs, kmer_size: usize) -> Vec<GeneKmers> {
     let graph = parse_gfa_file(&graph_args.gfa_path).expect("Failed to read GFA file");
 
-    let filtered_kmers: Vec<FilteredKmers> = graph
+    let filtered_kmers: Vec<GeneKmers> = graph
         .core_segment_structs()
         .iter()
-        .map(|segment| FilteredKmers {
+        .map(|segment| GeneKmers {
             gene: segment.name.clone(),
             start: 1,
             end: 1 + segment.sequence.len() as u64,
-            kmers: kmer::tile_segment(&segment.sequence, 1 as usize, kmer_size),
+            kmers: Probes::generate_probes(&segment.sequence, kmer_size, 0), //please change this magic number to be the segment
             strand: "+".to_string(),
             kmer_hits: HashMap::new(),
         })

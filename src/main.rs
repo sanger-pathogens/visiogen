@@ -3,24 +3,22 @@
 
 use chrono::Local;
 use log::*;
-use rayon::prelude::*;
 use simplelog::*;
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::Write;
 use std::path::Path;
 
 use crate::cli::GffArgs;
 use crate::cli::KmerOptions;
 use crate::index::query_kmers_across_indexes;
-use visiogen::FilteredKmers;
+use crate::probes::{GeneKmers, Probes};
 
-mod cli;
-mod graph;
-mod index;
-mod kmer;
-mod seq;
-mod utils;
+pub mod cli;
+pub mod graph;
+pub mod index;
+pub mod kmer;
+pub mod probes;
+pub mod seq;
+pub mod utils;
 
 fn set_up_logging() {
     let current_time = Local::now().format("%m-%d_%H-%M-%S").to_string();
@@ -42,129 +40,10 @@ fn set_up_logging() {
     .unwrap();
 }
 
-fn filter_kmers(
-    filtered_kmers_vec: &Vec<visiogen::FilteredKmers>,
-    kmer_size: usize,
-    center_base: Option<char>,
-    min_gc: usize,
-    max_gc: usize,
-    skip_gc: bool,
-) -> Vec<visiogen::FilteredKmers> {
-    filtered_kmers_vec
-        .iter()
-        .map(|filtered_kmers| {
-            let valid_kmers: HashMap<String, Vec<usize>> = filtered_kmers
-                .kmers
-                .par_iter()
-                .filter_map(|(kmer, positions)| {
-                    if let Some(center) = center_base {
-                        if kmer.chars().nth(kmer_size / 2 - 1) != Some(center) {
-                            debug! {"kmer: {} failed as middle base was not {}", kmer, center};
-                            return None;
-                        }
-                    }
-
-                    if !skip_gc {
-                        let (gc_first, gc_second) = seq::gc_content_on_each_half(kmer, kmer_size);
-
-                        if !(gc_first >= min_gc
-                            && gc_first <= max_gc
-                            && gc_second >= min_gc
-                            && gc_second <= max_gc)
-                        {
-                            debug! {"kmer: {} failed as gc {} - {} - {} was out of range {} - {}",
-                            kmer, gc_first, center_base.unwrap_or('-'), gc_second, min_gc, max_gc}; // Use '-' as placeholder if no center_base
-                            return None;
-                        }
-                    }
-
-                    Some((kmer.clone(), positions.clone()))
-                })
-                .collect();
-
-            visiogen::FilteredKmers {
-                gene: filtered_kmers.gene.clone(),
-                start: filtered_kmers.start.clone(),
-                end: filtered_kmers.end.clone(),
-                kmers: valid_kmers,
-                strand: filtered_kmers.strand.clone(),
-                kmer_hits: HashMap::new(),
-            }
-        })
-        .collect()
-}
-
-fn log_kmers_with_coords(filtered_kmers: &visiogen::FilteredKmers, kmer_size: usize) {
-    for (kmer, start_coords) in &filtered_kmers.kmers {
-        for &start in start_coords {
-            let end = if filtered_kmers.strand == "-" {
-                // If strand is '-', go backwards
-                if start >= kmer_size {
-                    start - kmer_size
-                } else {
-                    0 // Ensure end coordinate doesn't go negative
-                }
-            } else {
-                // Otherwise go forwards
-                start + kmer_size
-            };
-
-            info!("{},{},{}", kmer, start, end);
-        }
-    }
-}
-
-fn write_all_keys_to_file(all_filtered_kmers: &[FilteredKmers]) {
-    let timestamp = Local::now().format("%m-%d_%H-%M-%S").to_string();
-    let filename = format!("{}.fasta", timestamp);
-    let mut final_file = File::create(&filename).expect("Failed to create FASTA file");
-
-    for filtered in all_filtered_kmers {
-        for (i, (kmer, coords)) in filtered.kmers.iter().enumerate() {
-            let coords_str = coords
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-
-            writeln!(
-                final_file,
-                ">{}_{}    {} : {} copies",
-                filtered.gene,
-                i + 1,
-                coords_str,
-                coords.len()
-            )
-            .expect("Failed to write FASTA header");
-            writeln!(final_file, "{}", kmer).expect("Failed to write FASTA sequence");
-        }
-    }
-
-    info!("Wrote all kmers to file: {}", filename);
-}
-
-fn log_and_write_kmers(all_filtered_kmers: &[FilteredKmers], kmer_size: usize) {
-    // Write all kmers to a timestamped .fasta file
-    write_all_keys_to_file(all_filtered_kmers);
-
-    // Log metadata
-    for filtered in all_filtered_kmers {
-        info!("Gene: {}", filtered.gene);
-        info!("Strand: {}", filtered.strand);
-        info!("Start: {}", filtered.start);
-        info!("End: {}", filtered.end);
-        info!("Total: {}", filtered.kmers.len());
-
-        if log_enabled!(Level::Debug) {
-            log_kmers_with_coords(filtered, kmer_size);
-        }
-    }
-}
-
-fn search_kmers(kmer_options: &KmerOptions, gff_args: GffArgs) -> Vec<FilteredKmers> {
+fn run_gene_mode(kmer_options: &KmerOptions, gff_args: &GffArgs) -> Vec<GeneKmers> {
     let region = utils::parse_fasta(gff_args.in_fasta.clone()).expect("Failed to parse FASTA file");
 
-    let unfiltered_kmers = kmer::tile_string(&region, kmer_options.kmer_size);
+    let unfiltered_kmers = Probes::generate_probes(&region, kmer_options.kmer_size, 0); //start at 0 as generating all probes
 
     info!(
         "total raw kmers: {}",
@@ -172,22 +51,56 @@ fn search_kmers(kmer_options: &KmerOptions, gff_args: GffArgs) -> Vec<FilteredKm
     );
 
     let gene_kmers = kmer::generate_gene_kmers(
-        gff_args.genes,
+        &gff_args.genes,
         unfiltered_kmers,
-        gff_args.in_gff,
+        &gff_args.in_gff,
         kmer_options.allow_outside,
     );
 
-    let all_filtered_kmers = filter_kmers(
-        &gene_kmers,
-        kmer_options.kmer_size,
-        kmer_options.center_base,
-        kmer_options.min_gc,
-        kmer_options.max_gc,
-        kmer_options.skip_gc,
-    );
+    let filtered_all: Vec<GeneKmers> = gene_kmers
+        .iter()
+        .map(|gk| {
+            gk.filter_kmers(
+                kmer_options.center_base,
+                kmer_options.min_gc,
+                kmer_options.max_gc,
+                kmer_options.skip_gc,
+            )
+        })
+        .collect();
 
-    all_filtered_kmers
+    filtered_all
+}
+
+fn handle_kmer_output(all_kmers: Vec<GeneKmers>, args: &cli::Args, filename_prefix: &str) {
+    let kmers_to_write = match args.off_target_directory {
+        Some(ref off_target_dir) => {
+            match query_kmers_across_indexes(
+                Path::new(off_target_dir),
+                all_kmers.clone(),
+                args.threads,
+                args.max_hits,
+                args.recursive,
+            ) {
+                Ok(kmers) => kmers,
+                Err(e) => {
+                    error!("Failed to query off-target indexes: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        None => {
+            info!("Skipping off-target check as no off-target directory was provided.");
+            all_kmers.clone()
+        }
+    };
+
+    let timestamp = Local::now().format("%d-%m-%H-%M").to_string();
+    let filename = format!("{}_{}.fasta", filename_prefix, timestamp);
+
+    kmers_to_write
+        .iter()
+        .for_each(|gk| gk.log_and_write_kmers(args.kmer_options.kmer_size, filename.clone()));
 }
 
 fn main() {
@@ -195,73 +108,27 @@ fn main() {
 
     set_up_logging();
 
-    match args.command {
+    match &args.command {
         cli::Commands::Gff(gff_args) => {
-            let all_filtered_kmers = search_kmers(&args.kmer_options, gff_args);
-
-            let kmers_to_write = match args.off_target_directory {
-                Some(ref off_target_dir) => {
-                    match query_kmers_across_indexes(
-                        Path::new(off_target_dir),
-                        all_filtered_kmers.clone(),
-                        args.threads,
-                        args.max_hits,
-                        args.recursive,
-                    ) {
-                        Ok(kmers) => kmers,
-                        Err(e) => {
-                            log::error!("Failed to query off-target indexes: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                None => {
-                    log::info!(
-                        "Skipping off-target check as no off-target directory was provided."
-                    );
-                    all_filtered_kmers.clone()
-                }
-            };
-
-            log_and_write_kmers(&kmers_to_write, args.kmer_options.kmer_size);
+            let filtered_all = run_gene_mode(&args.kmer_options, gff_args);
+            handle_kmer_output(filtered_all, &args, "gff_probes");
         }
         cli::Commands::Graph(graph_args) => {
-            let segment_kmers = graph::run_graph_mode(&graph_args, args.kmer_options.kmer_size);
+            let segment_kmers = graph::run_graph_mode(graph_args, args.kmer_options.kmer_size);
 
-            let all_filtered_kmers = filter_kmers(
-                &segment_kmers,
-                args.kmer_options.kmer_size,
-                args.kmer_options.center_base,
-                args.kmer_options.min_gc,
-                args.kmer_options.max_gc,
-                args.kmer_options.skip_gc,
-            );
+            let filtered_all: Vec<GeneKmers> = segment_kmers
+                .iter()
+                .map(|gk| {
+                    gk.filter_kmers(
+                        args.kmer_options.center_base,
+                        args.kmer_options.min_gc,
+                        args.kmer_options.max_gc,
+                        args.kmer_options.skip_gc,
+                    )
+                })
+                .collect();
 
-            let kmers_to_write = match args.off_target_directory {
-                Some(ref off_target_dir) => {
-                    match query_kmers_across_indexes(
-                        Path::new(off_target_dir),
-                        all_filtered_kmers.clone(),
-                        args.threads,
-                        args.max_hits,
-                        args.recursive,
-                    ) {
-                        Ok(kmers) => kmers,
-                        Err(e) => {
-                            log::error!("Failed to query off-target indexes: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                None => {
-                    log::info!(
-                        "Skipping off-target check as no off-target directory was provided."
-                    );
-                    all_filtered_kmers.clone()
-                }
-            };
-
-            log_and_write_kmers(&kmers_to_write, args.kmer_options.kmer_size);
+            handle_kmer_output(filtered_all, &args, "graph_probes");
         }
         cli::Commands::Build(build_args) => {
             info!("indexing: {:#?}", args.off_target_directory);
@@ -278,19 +145,21 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use visiogen::*;
+
     use super::*;
 
     #[test]
-    fn test_tile_string() {
+    fn test_generate_probes() {
         let seq = "ACGTACGT";
         let kmer_size = 3;
-        let mut expected: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut expected: ProbeSet;
         expected.insert("ACG".to_string(), vec![0, 4]);
         expected.insert("CGT".to_string(), vec![1, 5]);
         expected.insert("GTA".to_string(), vec![2]);
         expected.insert("TAC".to_string(), vec![3]);
 
-        let result = kmer::tile_string(seq, kmer_size);
+        let result = Probes::generate_probes(seq, kmer_size, 0);
 
         // Check that all keys in expected exist in result and have the same values (ignoring order)
         assert_eq!(result.len(), expected.len());

@@ -96,7 +96,6 @@ pub fn find_files_with_extensions(
 
 pub fn configure_thread_pool(build_threads: usize) {
     static INIT: Once = Once::new();
-
     INIT.call_once(|| {
         if build_threads > 0 {
             ThreadPoolBuilder::new()

@@ -71,7 +71,7 @@ pub enum Commands {
     Build(BuildArgs),
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug, Clone)]
 pub struct GffArgs {
     #[arg(short = 'a', long = "annotation")]
     pub in_gff: String,
@@ -90,7 +90,7 @@ pub struct GffArgs {
     pub genes: Vec<String>,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct GraphArgs {
     #[arg(short = 'g', long = "gfa", help = "graph to generate probes from")]
     pub gfa_path: String,
@@ -144,7 +144,7 @@ pub struct KmerOptions {
     pub skip_gc: bool,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct BuildArgs {
     /// Use canonical kmers (on by default)
     #[arg(

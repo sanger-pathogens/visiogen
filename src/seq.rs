@@ -1,9 +1,9 @@
 use bio::alphabets::dna::revcomp;
 use bio::io::gff;
 use bio_types::strand::Strand;
-use std::collections::HashMap;
 use std::io::BufReader;
 
+use crate::probes::ProbeSet;
 use crate::utils;
 
 pub fn reverse_complement(sequence: &str) -> String {
@@ -14,56 +14,22 @@ pub fn reverse_complement(sequence: &str) -> String {
         .collect()
 }
 
-fn calculate_gc(sequence: &str) -> usize {
-    let total_length = sequence.len();
-    let gc_count = sequence
-        .chars()
-        .filter(|&c| c == 'G' || c == 'g' || c == 'C' || c == 'c')
-        .count();
-
-    let gc_content_percentage = (gc_count * 100) / total_length;
-
-    gc_content_percentage
-}
-
-pub fn gc_content_on_each_half(kmer: &str, kmer_size: usize) -> (usize, usize) {
-    let mid_index = kmer_size / 2;
-
-    let first_gc = calculate_gc(&kmer[..mid_index]);
-    let second_gc = calculate_gc(&kmer[mid_index + 1..]);
-
-    (first_gc, second_gc)
-}
-
-pub fn filter_hashmap<'a>(
-    kmer_hash: &'a HashMap<String, Vec<usize>>,
-    start: u64,
-    end: u64,
-    allow_outside: bool,
-) -> HashMap<String, Vec<usize>> {
-    kmer_hash
-        .iter()
-        .filter_map(|(key, indices)| {
+pub fn filter_hashmap(probes: ProbeSet, start: u64, end: u64, allow_outside: bool) -> ProbeSet {
+    probes
+        .into_iter()
+        .filter(|probe| {
             if allow_outside {
-                // Use `all` to check if all indices are within range
-                if indices
+                // All locations must be within the range
+                probe
+                    .locations
                     .iter()
-                    .all(|&index| index >= (start as usize) && index <= (end as usize))
-                {
-                    Some((key.to_string(), indices.to_vec()))
-                } else {
-                    None
-                }
+                    .all(|&pos| pos >= start as usize && pos <= end as usize)
             } else {
-                // Use `any` to check if any index is within range
-                if indices
+                // At least one location must be within the range
+                probe
+                    .locations
                     .iter()
-                    .any(|&index| index >= (start as usize) && index <= (end as usize))
-                {
-                    Some((key.to_string(), indices.to_vec()))
-                } else {
-                    None
-                }
+                    .any(|&pos| pos >= start as usize && pos <= end as usize)
             }
         })
         .collect()
