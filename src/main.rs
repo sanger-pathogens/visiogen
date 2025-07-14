@@ -24,16 +24,11 @@ fn run(args: Args) -> Result<()> {
 }
 
 fn run_probe_command(args: &Args, gff_args: &GffArgs) -> Result<()> {
-    let _gene_coords =
-        gff::coords_from_gene_name(&gff_args.in_gff, &gff_args.genes).map_err(|e| {
-            VisiogenError::GffParseError(format!(
-                "off_target_directory required for build command {}",
-                e
-            ))
-        })?;
+    let _gene_coords = gff::coords_from_gene_name(&gff_args.in_gff, &gff_args.genes)
+        .map_err(|e| VisiogenError::GffParseError(format!("{}", e)))?;
 
     let graph = graph::parse_gfa_file(&args.gfa_path)
-        .map_err(|e| VisiogenError::GfaParseError(format!("Failed to read GFA file: {}", e)))?;
+        .map_err(|e| VisiogenError::GfaParseError(format!("{}", e)))?;
 
     let segment_kmers: Vec<GeneKmers> = graph
         .core_segment_structs()
