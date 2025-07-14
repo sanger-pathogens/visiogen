@@ -12,7 +12,7 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::utils;
+use crate::io::utils;
 use crate::GeneKmers;
 
 const K: usize = 49;

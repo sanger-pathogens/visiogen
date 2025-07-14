@@ -116,6 +116,26 @@ impl GeneKmers {
             self.log_kmers_with_coords(kmer_size);
         }
     }
+
+    pub fn best_probes(&self, n: u16) -> GeneKmers {
+        let mut sorted_probes = self.kmers.clone();
+        sorted_probes.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let best_probes = sorted_probes.into_iter().take(n as usize).collect();
+
+        GeneKmers {
+            gene: self.gene.clone(),
+            start: self.start,
+            end: self.end,
+            kmers: best_probes,
+            strand: self.strand.clone(),
+            kmer_hits: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,9 +144,9 @@ pub struct Probes {
     pub locations: Vec<usize>,
     pub first_half_gc: usize,
     pub second_half_gc: usize,
-    pub complexity: f64,
+    pub complexity: f32,
     pub junction_base: char,
-    pub score: Option<f64>,
+    pub score: f32,
 }
 
 impl Probes {
@@ -135,7 +155,7 @@ impl Probes {
         let second_half_gc = Self::calculate_gc(&kmer[kmer.len() / 2..]);
         let complexity = Self::score_homopolymer_repeats(&kmer);
         let junction_base = kmer.chars().nth(24).unwrap_or('N');
-        let score = None;
+        let score = Self::calculate_probe_score(first_half_gc, second_half_gc, complexity);
 
         Self {
             kmer,
@@ -146,6 +166,22 @@ impl Probes {
             junction_base,
             score,
         }
+    }
+
+    fn calculate_probe_score(first_half_gc: usize, second_half_gc: usize, complexity: f32) -> f32 {
+        // Ideal GC content is around 60 ADD AS PARAM
+        let ideal_gc = 60.0;
+        let first_half_gc_score = 1.0 - (first_half_gc as f32 - ideal_gc).abs() / ideal_gc;
+        let second_half_gc_score = 1.0 - (second_half_gc as f32 - ideal_gc).abs() / ideal_gc;
+
+        let gc_score = (first_half_gc_score + second_half_gc_score) / 2.0;
+
+        let complexity_score = complexity;
+
+        // Weight GC content and complexity equally
+        let final_score = (gc_score * 0.5) + (complexity_score * 0.5);
+
+        final_score.max(0.0).min(1.0) // Ensure score is between 0 and 1
     }
 
     pub fn generate_probes(seq: &str, kmer_size: usize, start_offset: usize) -> ProbeSet {
@@ -178,7 +214,7 @@ impl Probes {
     }
 
     /// Returns a complexity score between 0.0 (very repetitive) and 1.0 (diverse)
-    fn score_homopolymer_repeats(seq: &str) -> f64 {
+    fn score_homopolymer_repeats(seq: &str) -> f32 {
         let mut max_run = 1;
         let mut current_run = 1;
         let mut prev_char = None;
@@ -193,8 +229,8 @@ impl Probes {
             prev_char = Some(c);
         }
 
-        let length = seq.len() as f64;
-        let repeat_fraction = max_run as f64 / length;
+        let length = seq.len() as f32;
+        let repeat_fraction = max_run as f32 / length;
 
         1.0 - repeat_fraction
     }
