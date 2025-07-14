@@ -12,7 +12,8 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use crate::utils;
+use crate::io::utils;
+use crate::GeneKmers;
 
 const K: usize = 49;
 const PREFIX_BITS: usize = 24;
@@ -115,11 +116,11 @@ pub fn build_indexes_for_all_fastas(
 
 pub fn query_kmers_across_indexes(
     index_directory: &Path,
-    mut filtered_kmers: Vec<visiogen::FilteredKmers>,
+    mut filtered_kmers: Vec<GeneKmers>,
     threads: usize,
     max_hits: usize,
     recursive: bool,
-) -> Result<Vec<visiogen::FilteredKmers>, Box<dyn std::error::Error>> {
+) -> Result<Vec<GeneKmers>, Box<dyn std::error::Error>> {
     utils::configure_thread_pool(threads);
 
     let index_files = utils::find_files_with_extensions(index_directory, &["cbl"], recursive)?;
@@ -134,10 +135,11 @@ pub fn query_kmers_across_indexes(
     let mut kmer_to_fk_index: HashMap<String, usize> = HashMap::new();
     let mut kmers: Vec<String> = Vec::new();
 
-    for (i, fk) in filtered_kmers.iter().enumerate() {
-        for k in fk.kmers.keys() {
-            kmer_to_fk_index.insert(k.clone(), i);
-            kmers.push(k.clone());
+    for (i, gene_kmers) in filtered_kmers.iter().enumerate() {
+        for probe in &gene_kmers.kmers {
+            let kmer = probe.kmer.clone();
+            kmer_to_fk_index.insert(kmer.clone(), i);
+            kmers.push(kmer);
         }
     }
 
@@ -189,10 +191,13 @@ pub fn query_kmers_across_indexes(
     let filtered = filtered_kmers
         .into_iter()
         .filter(|fk| {
-            fk.kmers.keys().any(|k| match fk.kmer_hits.get(k) {
-                Some(files) => files.len() <= max_hits,
-                None => true,
-            })
+            fk.kmers
+                .iter()
+                .map(|p| &p.kmer)
+                .any(|k| match fk.kmer_hits.get(k) {
+                    Some(files) => files.len() <= max_hits,
+                    None => true,
+                })
         })
         .collect::<Vec<_>>();
 

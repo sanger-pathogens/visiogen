@@ -55,6 +55,17 @@ pub struct Args {
     )]
     pub recursive: bool,
 
+    #[arg(short = 'g', long = "gfa", help = "graph to generate probes from")]
+    pub gfa_path: String,
+
+    #[arg(
+        short = 'n',
+        long = "probe_count",
+        help = "graph to generate probes from",
+        default_value_t = 10
+    )]
+    pub n_count: u16,
+
     #[command(flatten)]
     pub kmer_options: KmerOptions,
 
@@ -66,52 +77,16 @@ pub struct Args {
 pub enum Commands {
     Gff(GffArgs),
 
-    Graph(GraphArgs),
-
     Build(BuildArgs),
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug, Clone)]
 pub struct GffArgs {
-    #[arg(
-        short = 'a',
-        long = "annotation"
-    )]
+    #[arg(short = 'a', long = "annotation")]
     pub in_gff: String,
 
-    #[arg(
-        short = 'f',
-        long = "fasta"
-    )]
-    pub in_fasta: String,
-
-    /// Comma-separated list of gene names
-    #[arg(
-        short = 'g',
-        long = "genes",
-        value_delimiter = ',',
-        required = true,
-        help = "List of gene identifiers comma seperated"
-    )]
-    pub genes: Vec<String>,
-}
-
-#[derive(Parser, Debug)]
-pub struct GraphArgs {
-    #[arg(
-        short = 'g',
-        long = "gfa",
-        help = "graph to generate probes from"
-    )]
-    pub gfa_path: String,
-
-    /// Core segment inclusion threshold (fraction)
-    #[arg(
-        short = 't',
-        long = "threshold",
-        default_value_t = 0.95
-    )]
-    pub threshold: f64,
+    #[arg(short = 'g', long = "genes", help = "Gene identifier")]
+    pub genes: String,
 }
 
 #[derive(Parser, Clone)]
@@ -162,7 +137,7 @@ pub struct KmerOptions {
     pub skip_gc: bool,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct BuildArgs {
     /// Use canonical kmers (on by default)
     #[arg(
